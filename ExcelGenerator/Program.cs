@@ -1,49 +1,12 @@
-﻿using System.Diagnostics;
-using ClosedXML.Excel;
-
-using var workbook = new XLWorkbook();
+﻿using var workbook = new XLWorkbook();
 
 var worksheet = workbook.Worksheets.Add("Sample Sheet");
 
 var variables = GetVariablesMock();
-variables.ForEach(SetParent);
 
-var atualRow = 0;
-variables.ForEach(variable =>
-{
-    var rangeUsed = SetValueRangeVertical(
-        worksheet,
-        1,
-        atualRow + 1,
-        LeafCount(variable),
-        variable.Name);
+Print(worksheet, variables);
 
-    atualRow = rangeUsed.FirstCell().Address.RowNumber;
-
-    variable.Children.ForEach(c1 =>
-    {
-        if (c1.Children.Any())
-        {
-            var rangeUsed = SetValueRangeVertical(
-            worksheet,
-            2,
-            atualRow,
-            LeafCount(c1),
-            c1.Name);
-
-            atualRow = rangeUsed.LastCell().Address.RowNumber + 1;
-        }
-        else
-        {
-            worksheet.Cell(atualRow, 2).Value = c1.Name;
-            atualRow++;
-        }
-    });
-
-    atualRow = rangeUsed.LastCell().Address.RowNumber;
-});
-
-var filePath = @"C:/dev/ExcelGenerator/ExcelGenerator/test.xlsx";
+var filePath = @"./test.xlsx";
 
 File.Delete(filePath);
 
@@ -51,44 +14,53 @@ workbook.SaveAs(filePath);
 
 Process.Start(@"C:/Program Files/Microsoft Office/root/Office16/EXCEL.EXE", filePath);
 
-static int LeafCount(Variable test)
-{
-    var tests = test.Children;
-    var sum = tests.Sum(t => t.Children.Count);
-
-    if (sum == 0)
-        return tests.Count;
-
-    return tests.Sum(LeafCount);
-}
-
-static IXLRange SetValueRangeVertical(IXLWorksheet worksheet, int column, int firstRow, int rangeSize, string value)
-{
-    var range = worksheet.Range(firstRow, column, firstRow - 1 + rangeSize, column);
-    range.Merge();
-    range.SetValue(value);
-
-    var alignment = range.Style.Alignment;
-    alignment.SetTextRotation(255);
-    alignment.SetVertical(XLAlignmentVerticalValues.Center);
-    return range;
-}
-
 static List<Variable> GetVariablesMock()
 {
     var variable1 = new Variable
     {
         Name = "variable1",
+        Level = VariableLevel.LEVEL1,
         Children = new List<Variable>
         {
-            new (){ Name = "variable11" },
+            new ()
+            {
+                Name = "variable11",
+                Level = VariableLevel.LEVEL2,
+                Children = new List<Variable>
+                {
+                    new ()
+                    {
+                        Name = "variable111",
+                        Level = VariableLevel.LEVEL3,
+                    },
+                    new ()
+                    {
+                        Name = "variable112",
+                        Level = VariableLevel.LEVEL3,
+                    },
+                    new ()
+                    {
+                        Name = "variable113",
+                        Level = VariableLevel.LEVEL3,
+                    },
+                }
+            },
             new ()
             {
                 Name = "variable12",
-                Children =new List<Variable>
+                Level = VariableLevel.LEVEL2,
+                Children = new List<Variable>
                 {
-                    new (){ Name = "variable121" },
-                    new (){ Name = "variable122" }
+                    new ()
+                    {
+                        Name = "variable121",
+                        Level = VariableLevel.LEVEL3,
+                    },
+                    new ()
+                    {
+                        Name = "variable122",
+                        Level = VariableLevel.LEVEL3,
+                    },
                 }
             },
         }
@@ -97,35 +69,40 @@ static List<Variable> GetVariablesMock()
     var variable2 = new Variable
     {
         Name = "variable2",
-        Children = new List<Variable>
-        {
-            new (){ Name = "variable21" },
-            new (){ Name = "variable22" }
-        }
-    };
-
-    var variable3 = new Variable
-    {
-        Name = "variable3",
+        Level = VariableLevel.LEVEL1,
         Children = new List<Variable>
         {
             new ()
             {
-                Name =  "variable31",
-                Children = new ()
+                Name = "variable21",
+                Level = VariableLevel.LEVEL2,
+                Children = new List<Variable>
                 {
-                    new Variable
+                    new ()
                     {
-                        Name = "variable311",
-                        Children = new List<Variable>
-                        {
-                            new (){ Name = "variable3111" },
-                            new (){ Name = "variable3112" },
-                            new (){ Name = "variable3113" },
-                        }
+                        Name = "variable211",
+                        Level = VariableLevel.LEVEL3,
+                    },
+                    new ()
+                    {
+                        Name = "variable212",
+                        Level = VariableLevel.LEVEL3,
                     }
                 }
-            }
+            },
+            new ()
+            {
+                Name = "variable22",
+                Level = VariableLevel.LEVEL2,
+                Children = new List<Variable>
+                {
+                    new ()
+                    {
+                        Name = "variable221",
+                        Level = VariableLevel.LEVEL3,
+                    },
+                }
+            },
         }
     };
 
@@ -133,23 +110,44 @@ static List<Variable> GetVariablesMock()
     {
         variable1,
         variable2,
-        variable3
     };
 }
 
-static void SetParent(Variable variable)
+static void Print(IXLWorksheet worksheet, List<Variable> variables)
 {
-    variable.Children.ForEach(v =>
+    variables.ForEach(variable =>
     {
-        v.Parent = variable;
-        SetParent(v);
-    });
-}
+        var column = variable.Level switch
+        {
+            VariableLevel.LEVEL1 => Column.A,
+            VariableLevel.LEVEL2 => Column.B,
+            VariableLevel.LEVEL3 => Column.C,
+            VariableLevel.LEVEL4 => Column.C,
+            _ => Column.ERROR,
+        };
 
-public class Variable
-{
-    public Guid Uuid { get; set; } = Guid.NewGuid();
-    public string Name { get; set; }
-    public Variable Parent { get; set; }
-    public List<Variable> Children { get; set; } = new List<Variable>();
+        var lastCell = worksheet.Column(column).LastCellUsed(XLCellsUsedOptions.MergedRanges | XLCellsUsedOptions.AllContents);
+        var lastRow = lastCell != null ? lastCell.Address.RowNumber : 0;
+
+        lastRow++;
+
+        if (variable.Children.Any())
+        {
+            worksheet
+            .Range(lastRow, column, (lastRow + variable.LeafCount) - 1, column)
+            .Merge()
+            .SetValue(variable.Name)
+            .Style
+            .Alignment.SetVertical(XLAlignmentVerticalValues.Center)
+            .Alignment.SetHorizontal(XLAlignmentHorizontalValues.Center);
+
+            Print(worksheet, variable.Children);
+        }
+        else
+        {
+            worksheet
+            .Cell(lastRow, column)
+            .SetValue(variable.Name);
+        }
+    });
 }
